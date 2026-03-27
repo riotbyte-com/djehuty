@@ -55,11 +55,8 @@ jobs:
 
       - name: Initialize SPARQL permissions
         run: |
-          docker exec ${{ job.services.sparql.id }} isql 1111 dba dba exec="
-            DB.DBA.RDF_DEFAULT_USER_PERMS_SET ('nobody', 7);
-            GRANT execute on DB.DBA.SPARQL_INSERT_DICT_CONTENT to SPARQL;
-            GRANT execute on DB.DBA.L_O_LOOK to SPARQL;
-            GRANT SPARQL_UPDATE to SPARQL;"
+          docker cp docker/dev/sparql-init/001-setup_permissions.sql ${{ job.services.sparql.id }}:/tmp/001-setup_permissions.sql
+          docker exec ${{ job.services.sparql.id }} isql 1111 dba dba /tmp/001-setup_permissions.sql
 
       - name: Start application
         run: |
