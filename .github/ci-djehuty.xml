@@ -23,6 +23,7 @@
       <may-run-sparql-queries>1</may-run-sparql-queries>
       <may-impersonate>1</may-impersonate>
       <may-review>1</may-review>
+      <may-review-quotas>1</may-review-quotas>
     </account>
   </privileges>
   <rdf-store>
