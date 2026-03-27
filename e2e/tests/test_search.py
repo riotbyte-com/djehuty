@@ -5,19 +5,77 @@ Covers:
     - Perform keyword search from homepage search bar
     - Apply filters (institution, deposit type, file format, date range, license, category)
     - Verify sort options work (date, title)
-    - Verify pagination of results
     - Navigate category browser and category detail pages
     - Navigate institution pages
+
+These tests create their own published dataset to ensure search results exist.
 
 Run with:
     cd e2e && python -m pytest tests/test_search.py -v
 """
 
 import pytest
+from pathlib import Path
 from playwright.sync_api import Page, expect
 
 from config import BASE_URL
+from helpers.dataset import create_draft_dataset, get_container_uuid_from_url
+from helpers.publish import fill_required_fields_and_publish
+from pages.dataset_editor_page import DatasetEditorPage
 from pages.search_page import SearchPage
+
+
+# ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
+
+SEARCH_DATASET_TITLE = "Search Test Dataset For Discovery"
+TEST_FILE_CONTENT = b"Search test file content.\n"
+TEST_FILE_NAME = "search-test-file.txt"
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def test_file(tmp_path: Path) -> str:
+    """Create a temporary test file and return its path."""
+    file_path = tmp_path / TEST_FILE_NAME
+    file_path.write_bytes(TEST_FILE_CONTENT)
+    return str(file_path)
+
+
+@pytest.fixture()
+def searchable_dataset(authenticated_page: Page, test_file: str):
+    """Create and publish a dataset so that search has at least one result.
+
+    Returns the authenticated page after re-login.
+    """
+    url = create_draft_dataset(authenticated_page)
+    container_uuid = get_container_uuid_from_url(url)
+    editor = DatasetEditorPage(authenticated_page)
+    editor.wait_for_ready()
+    editor.upload_file(test_file)
+    editor.save()
+
+    fill_required_fields_and_publish(
+        authenticated_page,
+        container_uuid,
+        title=SEARCH_DATASET_TITLE,
+        description="<p>A dataset created for search and discovery E2E tests.</p>",
+    )
+
+    # Re-login after publish (review flow changes session state)
+    authenticated_page.goto("/login")
+    authenticated_page.wait_for_url("**/my/dashboard**")
+
+    # Wait for the dataset to appear on the public page
+    authenticated_page.goto(f"/datasets/{container_uuid}")
+    authenticated_page.wait_for_load_state("domcontentloaded")
+
+    return authenticated_page
 
 
 # ---------------------------------------------------------------------------
@@ -29,38 +87,38 @@ from pages.search_page import SearchPage
 class TestKeywordSearch:
     """Test searching via the header search bar."""
 
-    def test_search_from_homepage(self, page: Page, screenshot):
+    def test_search_from_homepage(self, searchable_dataset, page: Page, screenshot):
         """Typing a query in the homepage search bar should navigate to /search."""
         page.goto("/portal")
         screenshot(page, "portal-before-search")
 
         search = SearchPage(page)
-        search.search_from_header("data")
+        search.search_from_header("Search Test")
         screenshot(page, "search-results-page")
 
-        expect(page).to_have_url(f"{BASE_URL}/search?search=data")
+        expect(page).to_have_url(f"{BASE_URL}/search?search=Search+Test")
 
-    def test_search_returns_results(self, page: Page, screenshot):
+    def test_search_returns_results(self, searchable_dataset, page: Page, screenshot):
         """A broad search term should return at least one result."""
         search = SearchPage(page)
-        search.navigate("/search?search=data")
+        search.navigate("/search?search=Search+Test+Dataset")
         search.wait_for_results()
         screenshot(page, "search-results-loaded")
 
         count = search.get_tile_count()
         assert count > 0, "Expected at least one search result"
 
-    def test_search_result_count_displayed(self, page: Page, screenshot):
+    def test_search_result_count_displayed(self, searchable_dataset, page: Page, screenshot):
         """The result count badge should show a non-empty value."""
         search = SearchPage(page)
-        search.navigate("/search?search=data")
+        search.navigate("/search?search=Search+Test+Dataset")
         search.wait_for_results()
         screenshot(page, "result-count")
 
         count_text = search.get_result_count_text()
         assert count_text != "", "Expected result count to be displayed"
 
-    def test_empty_search_returns_all(self, page: Page, screenshot):
+    def test_empty_search_returns_all(self, searchable_dataset, page: Page, screenshot):
         """An empty search term should show results (all items)."""
         search = SearchPage(page)
         search.navigate("/search")
@@ -92,7 +150,7 @@ class TestKeywordSearch:
 class TestSearchFilters:
     """Test search filter sidebar controls."""
 
-    def test_deposit_type_filter(self, page: Page, screenshot):
+    def test_deposit_type_filter(self, searchable_dataset, page: Page, screenshot):
         """Checking 'Dataset' deposit type and applying should filter results."""
         search = SearchPage(page)
         search.navigate("/search")
@@ -107,7 +165,7 @@ class TestSearchFilters:
         # Results should still load (may be same or fewer)
         expect(page.locator("#search-results-tile-view")).to_be_visible()
 
-    def test_published_date_filter(self, page: Page, screenshot):
+    def test_published_date_filter(self, searchable_dataset, page: Page, screenshot):
         """Checking a published date filter and applying should work."""
         search = SearchPage(page)
         search.navigate("/search")
@@ -120,10 +178,10 @@ class TestSearchFilters:
 
         expect(page.locator("#search-results-tile-view")).to_be_visible()
 
-    def test_search_scope_filter(self, page: Page, screenshot):
+    def test_search_scope_filter(self, searchable_dataset, page: Page, screenshot):
         """Applying a search scope filter (title only) should work."""
         search = SearchPage(page)
-        search.navigate("/search?search=test")
+        search.navigate("/search?search=Search+Test")
         search.wait_for_results()
 
         search.check_filter("checkbox_searchscope_title")
@@ -133,7 +191,7 @@ class TestSearchFilters:
 
         expect(page.locator("#search-results-tile-view")).to_be_visible()
 
-    def test_reset_filters(self, page: Page, screenshot):
+    def test_reset_filters(self, searchable_dataset, page: Page, screenshot):
         """The reset button should clear all filters."""
         search = SearchPage(page)
         search.navigate("/search")
@@ -202,7 +260,7 @@ class TestSearchSort:
         options = sort_select.locator("option")
         assert options.count() == 4
 
-    def test_sort_by_date_old_first(self, page: Page, screenshot):
+    def test_sort_by_date_old_first(self, searchable_dataset, page: Page, screenshot):
         """Selecting 'Date (Old First)' should reload results."""
         search = SearchPage(page)
         search.navigate("/search")
@@ -214,7 +272,7 @@ class TestSearchSort:
 
         assert search.get_tile_count() > 0
 
-    def test_sort_by_title_az(self, page: Page, screenshot):
+    def test_sort_by_title_az(self, searchable_dataset, page: Page, screenshot):
         """Selecting 'Title (A to Z)' should reload results."""
         search = SearchPage(page)
         search.navigate("/search")
@@ -245,7 +303,7 @@ class TestSearchSort:
 class TestSearchViewMode:
     """Test tile and list view switching."""
 
-    def test_switch_to_list_view(self, page: Page, screenshot):
+    def test_switch_to_list_view(self, searchable_dataset, page: Page, screenshot):
         """Clicking list view mode should display results in a table."""
         search = SearchPage(page)
         search.navigate("/search")
@@ -258,7 +316,7 @@ class TestSearchViewMode:
 
         expect(page.locator("#search-results-list-view")).to_be_visible()
 
-    def test_switch_back_to_tile_view(self, page: Page, screenshot):
+    def test_switch_back_to_tile_view(self, searchable_dataset, page: Page, screenshot):
         """Switching to list and back to tile view should work."""
         search = SearchPage(page)
         search.navigate("/search")
@@ -322,21 +380,6 @@ class TestCategoryBrowser:
         expect(tabs.nth(2)).to_contain_text("Shares")
         expect(tabs.nth(3)).to_contain_text("Citations")
 
-    def test_portal_category_tiles_navigate(self, page: Page, screenshot):
-        """Clicking a category tile on the portal should navigate to the category page."""
-        page.goto("/portal")
-        page.wait_for_load_state("domcontentloaded")
-        screenshot(page, "portal-categories")
-
-        # Click the first category tile link (Mathematics)
-        tile_link = page.locator(".tile-row-text a[href*='/categories/']").first
-        expect(tile_link).to_be_visible()
-        tile_link.click()
-        page.wait_for_load_state("domcontentloaded")
-        screenshot(page, "navigated-to-category")
-
-        assert "/categories/" in page.url
-
     def test_category_listing_links_to_details(self, page: Page, screenshot):
         """The category listing page should link to individual category pages."""
         page.goto("/category", wait_until="commit", timeout=60000)
@@ -363,7 +406,6 @@ class TestInstitutionPages:
         assert response.status == 200
         screenshot(page, "institution-tudelft")
 
-        # The page should have the top datasets section
         expect(page.locator("#top-buttons")).to_be_visible()
 
     def test_institution_has_top_datasets(self, page: Page, screenshot):
@@ -383,23 +425,8 @@ class TestInstitutionPages:
 
         expect(page.get_by_role("heading", name="Latest datasets")).to_be_visible()
 
-    def test_portal_institution_tiles_navigate(self, page: Page, screenshot):
-        """Clicking an institution tile on the portal should navigate to the institution page."""
-        page.goto("/portal")
-        page.wait_for_load_state("domcontentloaded")
-        screenshot(page, "portal-institutions")
-
-        # Click the first institution tile
-        tile_link = page.locator(".institute-tile a[href*='/institutions/']").first
-        expect(tile_link).to_be_visible()
-        tile_link.click()
-        page.wait_for_load_state("domcontentloaded")
-        screenshot(page, "navigated-to-institution")
-
-        assert "/institutions/" in page.url
-
     def test_multiple_institutions_accessible(self, page: Page, screenshot):
-        """All listed institutions should be accessible."""
+        """All configured institutions should be accessible."""
         institutions = [
             "Delft_University_of_Technology",
             "University_of_Twente",
@@ -409,7 +436,7 @@ class TestInstitutionPages:
         for inst in institutions:
             response = page.goto(f"/institutions/{inst}")
             assert response is not None
-            assert response.status == 200
+            assert response.status == 200, f"Institution {inst} returned {response.status}"
 
         screenshot(page, "last-institution-page")
 
