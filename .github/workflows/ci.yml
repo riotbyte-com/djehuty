@@ -1,7 +1,8 @@
 name: CI
 
 on:
-  push: ~
+  pull_request:
+    branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -31,3 +32,7 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       marker: ${{ matrix.marker }}
+
+  coverage-report:
+    needs: e2e
+    uses: ./.github/workflows/coverage.yml
