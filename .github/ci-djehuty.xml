@@ -32,7 +32,9 @@
   <show-latest-datasets>1</show-latest-datasets>
   <groups>
     <group name="4TU.ResearchData" domain="4tu.nl" id="28585" parent_id="0" />
-    <group name="Delft University of Technology" domain="tudelft.nl" id="28586" parent_id="28585" is_featured="1" />
+    <group name="Delft University of Technology" domain="tudelft.nl" id="28586" parent_id="28585" is_featured="1">
+      <member email="user@tudelft.nl" first_name="Test" last_name="User" />
+    </group>
     <group name="Eindhoven University of Technology" domain="tue.nl" parent_id="28585" id="28589" is_featured="1" />
     <group name="Other institutions" domain="nogroup" id="28598" parent_id="28585" is_featured="1" />
     <group name="University of Twente" domain="utwente.nl" id="28592" parent_id="28585" is_featured="1" />
