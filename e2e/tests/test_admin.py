@@ -12,13 +12,75 @@ Run with:
     cd e2e && python -m pytest tests/test_admin.py -v
 """
 
+from pathlib import Path
+
 import pytest
 from playwright.sync_api import Page, expect
 
 from config import BASE_URL
 from helpers.accounts import get_non_admin_account_uuid
+from helpers.dataset import create_draft_dataset, get_container_uuid_from_url
 from helpers.impersonation import impersonate, stop_impersonation
+from helpers.publish import fill_required_fields_and_publish
 from helpers.quota import create_quota_request
+from pages.dataset_editor_page import DatasetEditorPage
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def test_file(tmp_path: Path) -> str:
+    """Create a temporary test file and return its path."""
+    file_path = tmp_path / "admin-test-file.txt"
+    file_path.write_bytes(b"Admin report test file.\n")
+    return str(file_path)
+
+
+@pytest.fixture()
+def restricted_dataset(authenticated_page: Page, test_file: str):
+    """Create and publish a restricted dataset for admin report tests."""
+    url = create_draft_dataset(authenticated_page)
+    container_uuid = get_container_uuid_from_url(url)
+    editor = DatasetEditorPage(authenticated_page)
+    editor.wait_for_ready()
+    editor.upload_file(test_file)
+    editor.save()
+
+    fill_required_fields_and_publish(
+        authenticated_page,
+        container_uuid,
+        title="Restricted Dataset for Admin Report",
+        is_restricted=True,
+    )
+
+    authenticated_page.goto("/login")
+    authenticated_page.wait_for_url("**/my/dashboard**")
+    return container_uuid
+
+
+@pytest.fixture()
+def embargoed_dataset(authenticated_page: Page, test_file: str):
+    """Create and publish an embargoed dataset for admin report tests."""
+    url = create_draft_dataset(authenticated_page)
+    container_uuid = get_container_uuid_from_url(url)
+    editor = DatasetEditorPage(authenticated_page)
+    editor.wait_for_ready()
+    editor.upload_file(test_file)
+    editor.save()
+
+    fill_required_fields_and_publish(
+        authenticated_page,
+        container_uuid,
+        title="Embargoed Dataset for Admin Report",
+        is_embargoed=True,
+    )
+
+    authenticated_page.goto("/login")
+    authenticated_page.wait_for_url("**/my/dashboard**")
+    return container_uuid
 
 
 # ---------------------------------------------------------------------------
@@ -160,37 +222,31 @@ class TestAdminReports:
         screenshot(admin_page, "embargoed-datasets-report")
         expect(admin_page.locator("body")).to_contain_text("Embargoed Datasets")
 
-    def test_restricted_report_has_export_links(self, admin_page: Page, screenshot):
-        """Restricted datasets report should have CSV and JSON export links when data exists."""
+    def test_restricted_report_has_export_links(self, restricted_dataset, admin_page: Page, screenshot):
+        """Restricted datasets report should have CSV and JSON export links."""
         admin_page.goto("/admin/reports/restricted_datasets")
         admin_page.wait_for_load_state("domcontentloaded")
         screenshot(admin_page, "restricted-export-links")
 
-        # Export links only appear when there are restricted datasets
-        reports_table = admin_page.locator("#reports-table")
-        if reports_table.is_visible():
-            expect(
-                admin_page.locator("a[href*='export=1'][href*='format=csv']")
-            ).to_be_visible()
-            expect(
-                admin_page.locator("a[href*='export=1'][href*='format=json']")
-            ).to_be_visible()
+        expect(
+            admin_page.locator("a[href*='export=1'][href*='format=csv']")
+        ).to_be_visible()
+        expect(
+            admin_page.locator("a[href*='export=1'][href*='format=json']")
+        ).to_be_visible()
 
-    def test_embargoed_report_has_export_links(self, admin_page: Page, screenshot):
-        """Embargoed datasets report should have CSV and JSON export links when data exists."""
+    def test_embargoed_report_has_export_links(self, embargoed_dataset, admin_page: Page, screenshot):
+        """Embargoed datasets report should have CSV and JSON export links."""
         admin_page.goto("/admin/reports/embargoed_datasets")
         admin_page.wait_for_load_state("domcontentloaded")
         screenshot(admin_page, "embargoed-export-links")
 
-        # Export links only appear when there are embargoed datasets
-        reports_table = admin_page.locator("#reports-table")
-        if reports_table.is_visible():
-            expect(
-                admin_page.locator("a[href*='export=1'][href*='format=csv']")
-            ).to_be_visible()
-            expect(
-                admin_page.locator("a[href*='export=1'][href*='format=json']")
-            ).to_be_visible()
+        expect(
+            admin_page.locator("a[href*='export=1'][href*='format=csv']")
+        ).to_be_visible()
+        expect(
+            admin_page.locator("a[href*='export=1'][href*='format=json']")
+        ).to_be_visible()
 
     def test_non_admin_gets_403_on_reports(self, admin_page: Page, screenshot):
         """A non-admin user should receive 403 on /admin/reports."""
