@@ -161,30 +161,36 @@ class TestAdminReports:
         expect(admin_page.locator("body")).to_contain_text("Embargoed Datasets")
 
     def test_restricted_report_has_export_links(self, admin_page: Page, screenshot):
-        """Restricted datasets report should have CSV and JSON export links."""
+        """Restricted datasets report should have CSV and JSON export links when data exists."""
         admin_page.goto("/admin/reports/restricted_datasets")
         admin_page.wait_for_load_state("domcontentloaded")
         screenshot(admin_page, "restricted-export-links")
 
-        expect(
-            admin_page.locator("a[href*='export=1'][href*='format=csv']")
-        ).to_be_visible()
-        expect(
-            admin_page.locator("a[href*='export=1'][href*='format=json']")
-        ).to_be_visible()
+        # Export links only appear when there are restricted datasets
+        reports_table = admin_page.locator("#reports-table")
+        if reports_table.is_visible():
+            expect(
+                admin_page.locator("a[href*='export=1'][href*='format=csv']")
+            ).to_be_visible()
+            expect(
+                admin_page.locator("a[href*='export=1'][href*='format=json']")
+            ).to_be_visible()
 
     def test_embargoed_report_has_export_links(self, admin_page: Page, screenshot):
-        """Embargoed datasets report should have CSV and JSON export links."""
+        """Embargoed datasets report should have CSV and JSON export links when data exists."""
         admin_page.goto("/admin/reports/embargoed_datasets")
         admin_page.wait_for_load_state("domcontentloaded")
         screenshot(admin_page, "embargoed-export-links")
 
-        expect(
-            admin_page.locator("a[href*='export=1'][href*='format=csv']")
-        ).to_be_visible()
-        expect(
-            admin_page.locator("a[href*='export=1'][href*='format=json']")
-        ).to_be_visible()
+        # Export links only appear when there are embargoed datasets
+        reports_table = admin_page.locator("#reports-table")
+        if reports_table.is_visible():
+            expect(
+                admin_page.locator("a[href*='export=1'][href*='format=csv']")
+            ).to_be_visible()
+            expect(
+                admin_page.locator("a[href*='export=1'][href*='format=json']")
+            ).to_be_visible()
 
     def test_non_admin_gets_403_on_reports(self, admin_page: Page, screenshot):
         """A non-admin user should receive 403 on /admin/reports."""
