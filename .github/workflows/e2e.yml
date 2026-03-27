@@ -10,6 +10,11 @@ on:
         required: false
         type: string
         default: ''
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
 
 jobs:
   test:
@@ -18,6 +23,9 @@ jobs:
     services:
       sparql:
         image: openlink/virtuoso-opensource-7:7.2.13
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         ports:
           - 8890:8890
           - 1111:1111
