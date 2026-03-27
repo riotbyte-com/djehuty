@@ -20,30 +20,23 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      sparql:
+        image: openlink/virtuoso-opensource-7:7.2.13
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        ports:
+          - 8890:8890
+          - 1111:1111
+        env:
+          DBA_PASSWORD: dba
+          VIRT_Parameters_DirsAllowed: "., ../vsp, /usr/share/proj"
+        options: --health-cmd="isql 127.0.0.1:1111 dba dba exec='select 1'" --health-interval=10s --health-timeout=5s --health-retries=10 --health-start-period=30s
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Log in to Docker Hub
-        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-
-      - name: Start SPARQL database
-        run: |
-          docker run -d --name sparql \
-            -p 8890:8890 -p 1111:1111 \
-            -e DBA_PASSWORD=dba \
-            -e "VIRT_Parameters_DirsAllowed=., ../vsp, /usr/share/proj" \
-            openlink/virtuoso-opensource-7:7.2.13
-          echo "Waiting for Virtuoso to be ready..."
-          for i in $(seq 1 30); do
-            if docker exec sparql isql 127.0.0.1:1111 dba dba exec="select 1" 2>/dev/null; then
-              echo "Virtuoso is ready"
-              break
-            fi
-            echo "Waiting... ($i/30)"
-            sleep 5
-          done
-          docker exec sparql isql 127.0.0.1:1111 dba dba exec="select 1" || (echo "Virtuoso failed to start" && exit 1)
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -70,8 +63,8 @@ jobs:
 
       - name: Initialize SPARQL permissions
         run: |
-          docker cp docker/dev/sparql-init/001-setup_permissions.sql sparql:/tmp/001-setup_permissions.sql
-          docker exec sparql isql 1111 dba dba /tmp/001-setup_permissions.sql
+          docker cp docker/dev/sparql-init/001-setup_permissions.sql ${{ job.services.sparql.id }}:/tmp/001-setup_permissions.sql
+          docker exec ${{ job.services.sparql.id }} isql 1111 dba dba /tmp/001-setup_permissions.sql
 
       - name: Start application
         run: |
